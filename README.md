@@ -1,6 +1,6 @@
 - 👋 Hi, I’m @uongsuadaubung
-- 👀 I’m interested in meow
-- 🌱 I’m currently learning meow
+- 👀 I’m interested in reverse engineering
+- 🌱 I’m currently learning java and c#
 - 💞️ I’m looking to collaborate on mewo
 - 📫 How to reach me meow
 
