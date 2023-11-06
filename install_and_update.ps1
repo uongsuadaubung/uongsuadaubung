@@ -1,20 +1,19 @@
-function ManageJarProFile {
+function ManageJarFiles {
     param (
-        [string]$jarProFile,
-        [string]$jarLatestFile
+        [string]$sourceJarFile,
+        [string]$destinationJarFile
     )
 
-    # Kiểm tra xem file "burpsuite_pro.jar" có tồn tại không
-    if (Test-Path $jarProFile) {
-        # Xoá file "burpsuite_pro.jar"
-        Remove-Item -Path $jarProFile -Force
-        
+    # Kiểm tra xem tệp nguồn có tồn tại không
+    if (Test-Path $sourceJarFile) {
+        # Xoá tệp nguồn
+        Remove-Item -Path $sourceJarFile -Force
     }
 
-    # Đổi tên "jar_latest.jar" thành "burpsuite_pro.jar"
-    Rename-Item -Path $jarLatestFile -NewName $jarProFile
-    
+    # Đổi tên tệp đích thành tên tệp nguồn
+    Rename-Item -Path $destinationJarFile -NewName $sourceJarFile
 }
+
 function CreateCmdFile {
     param (
         [string]$cmdFileName,
@@ -43,11 +42,57 @@ start /B javaw ^
 function CreateVersionFile {
     param (
         [string]$versionFilePath,
-        [string]$version
+        [string]$key,
+        [string]$value
     )
 
-    Set-Content -Path $versionFilePath -Value $version
-    
+    if (Test-Path -Path $versionFilePath) {
+        $content = Get-Content -Path $versionFilePath
+        $updatedContent = @()
+        $keyExists = $false
+
+        foreach ($line in $content) {
+            if ($line -match "^${key}:") {
+                # Nếu key đã tồn tại, cập nhật giá trị
+                $updatedContent += "${key}:$value"
+                $keyExists = $true
+            } else {
+                $updatedContent += $line
+            }
+        }
+
+        if (-not $keyExists) {
+            # Nếu key chưa tồn tại, thêm mới
+            $updatedContent += "${key}:$value"
+        }
+
+        $updatedContent | Set-Content -Path $versionFilePath
+    } else {
+        # Nếu file không tồn tại, tạo mới file với key và value
+        Set-Content -Path $versionFilePath -Value "${key}:$value"
+    }
+}
+
+function ReadVersionFile {
+    param (
+        [string]$versionFilePath,
+        [string]$key
+    )
+
+    if (Test-Path -Path $versionFilePath) {
+        $content = Get-Content -Path $versionFilePath
+
+        foreach ($line in $content) {
+            if ($line -match "^${key}:") {
+                # Nếu tìm thấy key, trả về giá trị
+                $value = $line -replace "^${key}:", ""
+                return $value -replace '\s+',''
+            }
+        }
+    }
+
+    # Nếu không tìm thấy key hoặc file không tồn tại, trả về giá trị mặc định (hoặc null)
+    return $null
 }
 
 function CheckForUpdateBurp {
@@ -59,11 +104,20 @@ function CheckForUpdateBurp {
     $pattern = '<title>(.*?)<\/title>'
     $match = [regex]::Match($content, $pattern);
     # Lấy giá trị từ kết quả tìm kiếm
-    $version = "0";
+    $version = $null;
     if ($match.Success) {
         $version = [regex]::Match($match.Value, "(\d+\.\d+(?:\.\d+)*)").Value
     } 
     return $version -replace '\s+',''
+}
+
+function CheckForUpdateLoader {
+    param (
+        [string]$url
+    )
+    $request = Invoke-WebRequest -Uri $url
+    $content = $request.Content
+    return $content -replace '\s+',''
 }
 
 function DownloadFile {
@@ -82,20 +136,19 @@ function CheckJava {
     if (!$jre) {
         Write-Output "Please install jre first, run: ";
         Write-Output "winget install EclipseAdoptium.Temurin.21.JRE";
-        # exit;
-    }else{
-        Write-Output "Required JRE-21 is Installed"
+        exit;
     }
-    
+    Write-Output "Required JRE-21 is Installed"
 }
 
 CheckJava
-
+$urlLoaderVersion = "https://github.com/uongsuadaubung/uongsuadaubung/raw/main/version.txt";
 $urlHtml = "https://portswigger.net/burp/releases/professional-community-2023-10-2-4?requestededition=professional"
-$url = "https://portswigger.net/burp/releases/startdownload?product=pro&version=&type=Jar"
-$urlLoader = "https://github.com/uongsuadaubung/uongsuadaubung/raw/1.17/loader.jar"
+$urlBurp = "https://portswigger.net/burp/releases/startdownload?product=pro&version=&type=Jar"
+
 $versionFile = "version.txt"
 $jarLatestFile = "jar_latest.jar"
+$loaderLatestFile = "loader_latest.jar"
 $jarProFile = "burpsuite_pro.jar"
 $cmdFileName = "burpsuite_pro.cmd"
 $loaderFile = "loader.jar"
@@ -104,9 +157,12 @@ $loaderFile = "loader.jar"
 
 # Lấy thông tin phiên bản mới nhất trên web
 Write-Output "Checking for update..."
-$version = CheckForUpdateBurp -Url $urlHtml
 
-if ($version -eq "0") {
+$loaderVerion = CheckForUpdateLoader -url $urlLoaderVersion
+$urlLoader = "https://github.com/uongsuadaubung/uongsuadaubung/raw/${loaderVerion}/loader.jar"
+
+$version = CheckForUpdateBurp -Url $urlHtml
+if ($null -eq $version) {
     Write-Output "Something wrong, please check again."
     exit
 }
@@ -116,15 +172,23 @@ if ($version -eq "0") {
 
 # Kiểm tra xem file "version.txt" không tồn tại
 if (-not (Test-Path $versionFile)) {
-    DownloadFile -url $url -outputName $jarLatestFile
+    #Nếu là lần đầu mới chưa có gì thì download loader và burp;
+    DownloadFile -url $urlLoader -outputName $loaderFile
+    DownloadFile -url $urlBurp -outputName $jarLatestFile
     # Tạo file "version.txt" và ghi giá trị $version vào đó
-    CreateVersionFile -versionFilePath $versionFile -version $version
+    CreateVersionFile -versionFilePath $versionFile -key $jarProFile -value $version
+    CreateVersionFile -versionFilePath $versionFile -key $loaderFile -value $loaderVerion
+
 	# Gọi function để quản lý tệp "burpsuite_pro.jar"
-    ManageJarProFile -jarProFile $jarProFile -jarLatestFile $jarLatestFile
+    ManageJarFiles -sourceJarFile $jarProFile -destinationJarFile $jarLatestFile
 	Write-Output "BurpSuite Professional has been installed."
 } else {
     # Đọc nội dung của file "version.txt"
-    $currentVersion = (Get-Content $versionFile) -replace '\s+',''
+    $currentVersion = ReadVersionFile -versionFilePath $versionFile -key $jarProFile 
+    if ($null -eq $currentVersion) {
+        Write-Output "Something wrong";
+        exit;
+    }
 	Write-Output "Current verion: $currentVersion"
 	Write-Output "Lastest verion: $version"
     # So sánh nội dung của file "version.txt" với $version
@@ -134,16 +198,42 @@ if (-not (Test-Path $versionFile)) {
         
     } else {
         #Nội dung của file 'version.txt' không trùng khớp với giá trị hiện tại: $version
-        DownloadFile -url $url -outputName $jarLatestFile
+        DownloadFile -url $urlBurp -outputName $jarLatestFile
         # Gọi function để quản lý tệp "burpsuite_pro.jar"
-        ManageJarProFile -jarProFile $jarProFile -jarLatestFile $jarLatestFile
+        ManageJarFiles -sourceJarFile $jarProFile -destinationJarFile $jarLatestFile
 		# Cập nhật lại phiên bản
-		CreateVersionFile -versionFilePath $versionFile -version $version
+        CreateVersionFile -versionFilePath $versionFile -key $jarProFile -value $version
 		Write-Output "BurpSuite Professional has been updated."
 		
     }
-}
 
+    #############################################################
+
+    
+    $currentLoaderVersion = ReadVersionFile -versionFilePath $versionFile -key $loaderFile 
+    if ($null -eq $currentLoaderVersion) {
+        Write-Output "Something wrong";
+        exit;
+    }
+	Write-Output "Current loader verion: $currentLoaderVersion"
+	Write-Output "Lastest loader verion: $loaderVerion"
+    
+    if ($currentLoaderVersion -eq $loaderVerion) {
+       
+        Write-Output "You are using the lastest version of Loader."
+        
+    } else {
+        
+        DownloadFile -url $urlLoader -outputName $loaderLatestFile
+        
+        ManageJarFiles -sourceJarFile $loaderFile -destinationJarFile $loaderLatestFile
+		
+        CreateVersionFile -versionFilePath $versionFile -key $loaderFile -value $loaderVerion
+		Write-Output "Loader has been updated."
+		
+    }
+}
+  
 if (-not (Test-Path $cmdFileName)) {
 	# Gọi function để tạo tệp cmd
 	CreateCmdFile -cmdFileName $cmdFileName -jarProFile $jarProFile
@@ -152,3 +242,10 @@ if (-not (Test-Path $cmdFileName)) {
 if (-not(Test-Path($loaderFile))) {
     DownloadFile -url $urlLoader -outputName $loaderFile
 }
+
+if (-not(Test-Path($jarProFile))) {
+    DownloadFile -url $urlBurp -outputName $jarProFile
+}
+
+
+
