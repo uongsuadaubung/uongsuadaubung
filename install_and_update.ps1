@@ -136,7 +136,7 @@ function CheckJava {
     if (!$jre) {
         Write-Output "Please install jre first, run: ";
         Write-Output "winget install EclipseAdoptium.Temurin.21.JRE";
-        exit;
+        # exit;
     }
     Write-Output "Required JRE-21 is Installed"
 }
