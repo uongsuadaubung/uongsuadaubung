@@ -127,6 +127,7 @@ function DownloadFile {
     )
     Write-Output "Dowloading BurpSuite Professional."
     Write-Output "Please wait..."
+	Write-Output $urlBurp
     # Thực hiện HTTP request và tải tệp về
     Invoke-WebRequest -Uri $url -OutFile $outputName
 }
@@ -143,8 +144,7 @@ function CheckJava {
 
 CheckJava
 $urlLoaderVersion = "https://github.com/uongsuadaubung/uongsuadaubung/raw/main/version.txt";
-$urlHtml = "https://portswigger.net/burp/releases/professional-community-2023-10-2-4?requestededition=professional"
-$urlBurp = "https://portswigger.net/burp/releases/startdownload?product=pro&version=&type=Jar"
+$urlHtml = "https://portswigger.net/burp/releases/community/latest"
 
 $versionFile = "version.txt"
 $jarLatestFile = "jar_latest.jar"
@@ -167,8 +167,7 @@ if ($null -eq $version) {
     exit
 }
 
-
-
+$urlBurp = "https://portswigger-cdn.net/burp/releases/download?product=pro&version=$version&type=Jar"
 
 # Kiểm tra xem file "version.txt" không tồn tại
 if (-not (Test-Path $versionFile)) {
