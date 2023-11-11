@@ -99,8 +99,13 @@ function CheckForUpdateBurp {
     param (
         [string]$Url
     )
-    $request = Invoke-WebRequest -Uri $Url
-    $content = $request.Content
+
+    if (CheckProgramExists -name curl.exe) {
+        $content = curl.exe --location $Url
+    }else{
+        $content = Invoke-RestMethod -Uri $Url
+    }
+    
     $pattern = '<title>(.*?)<\/title>'
     $match = [regex]::Match($content, $pattern);
     # Lấy giá trị từ kết quả tìm kiếm
@@ -115,8 +120,12 @@ function CheckForUpdateLoader {
     param (
         [string]$url
     )
-    $request = Invoke-WebRequest -Uri $url
-    $content = $request.Content
+    if (CheckProgramExists -name curl.exe) {
+        $content = curl.exe --location $Url
+    }else{
+        $content = Invoke-RestMethod -Uri $Url
+    }
+    
     return $content -replace '\s+',''
 }
 
@@ -129,7 +138,12 @@ function DownloadFile {
     Write-Output "Please wait..."
 	Write-Output $urlBurp
     # Thực hiện HTTP request và tải tệp về
-    Invoke-WebRequest -Uri $url -OutFile $outputName
+    if (CheckProgramExists -name curl.exe) {
+        curl.exe -o $outputName $url
+    }else{
+        Invoke-RestMethod -Uri $url | -OutFile $outputName
+    }
+    
 }
 
 function CheckJava {
@@ -140,6 +154,13 @@ function CheckJava {
         # exit;
     }
     Write-Output "Required JRE-21 is Installed"
+}
+
+function CheckProgramExists {
+    param (
+        [string]$name
+    )
+    return Get-Command $name -ErrorAction SilentlyContinue    
 }
 
 function ReduceJarFile {
@@ -162,7 +183,7 @@ function ReduceJarFile {
         return
     }
     # Kiểm tra xem 7z.exe có tồn tại trong đường dẫn môi trường không
-    $7zPath = Get-Command 7z.exe -ErrorAction SilentlyContinue
+    $7zPath = CheckProgramExists -name 7z.exe
 
     if ($7zPath) {
         Write-Output "7z.exe found. Proceeding with the script..."
