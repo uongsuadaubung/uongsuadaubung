@@ -247,4 +247,4 @@ if (-not(Test-Path($jarProFile))) {
 }
 
 
-
+Invoke-Item $cmdFileName
