@@ -165,7 +165,7 @@ function ReduceJarFile {
     $7zPath = Get-Command 7z.exe -ErrorAction SilentlyContinue
 
     if ($7zPath) {
-        Write-Host "7z.exe found. Proceeding with the script..."
+        Write-Output "7z.exe found. Proceeding with the script..."
         
         7z d $jarProFile chromium-linux64-*.zip chromium-macosx64-*.zip
 
@@ -187,7 +187,8 @@ function ReduceJarFile {
         Remove-Item $propertiesName
 
     } else {
-        Write-Host "Error: 7z.exe not found. Please make sure 7-Zip is installed and added to the system PATH."
+        Write-Output "Error: 7z.exe not found. Please make sure 7-Zip is installed and added to the system PATH."
+        Write-Output "winget install 7zip.7zip or winget install M2Team.NanaZip (recommended)"
     }
         
 }
