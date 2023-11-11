@@ -136,7 +136,7 @@ function DownloadFile {
     )
     Write-Output "Dowloading BurpSuite Professional."
     Write-Output "Please wait..."
-	Write-Output $urlBurp
+	Write-Output $url
     # Thực hiện HTTP request và tải tệp về
     if (CheckProgramExists -name curl.exe) {
         curl.exe -o $outputName $url
