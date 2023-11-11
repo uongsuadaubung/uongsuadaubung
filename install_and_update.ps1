@@ -141,7 +141,7 @@ function DownloadFile {
     if (CheckProgramExists -name curl.exe) {
         curl.exe -o $outputName $url
     }else{
-        Invoke-RestMethod -Uri $url | -OutFile $outputName
+        Invoke-WebRequest -Uri $url -OutFile $outputName
     }
     
 }
