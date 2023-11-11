@@ -139,7 +139,7 @@ function DownloadFile {
 	Write-Output $url
     # Thực hiện HTTP request và tải tệp về
     if (CheckProgramExists -name curl.exe) {
-        curl.exe -o $outputName $url
+        curl.exe -o $outputName --location $url
     }else{
         Invoke-WebRequest -Uri $url -OutFile $outputName
     }
