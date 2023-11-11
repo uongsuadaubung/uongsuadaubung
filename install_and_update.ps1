@@ -243,7 +243,7 @@ function CreateMenuShortcut {
   $shortcut.TargetPath = $targetPath
   $shortcut.WorkingDirectory = $pwd
   $shortcut.IconLocation = "$pwd\pro.ico"
-
+  $Shortcut.WindowStyle = 7 #run minimized
   # Lưu shortcut
   $shortcut.Save()
   Write-Output "A shortcut has been created at the path $targetPath"
