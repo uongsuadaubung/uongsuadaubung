@@ -220,6 +220,35 @@ function ReduceJarFile {
         
 }
 
+function CreateMenuShortcut {
+  param(
+    [string]$sourceFilePath
+  )
+
+  # Định nghĩa đường dẫn và tên của shortcut
+  $ShortcutPath = "C:\Users\$env:username\AppData\Roaming\Microsoft\Windows\Start Menu\BurpSuite Professional.lnk"
+
+  if (Test-Path($ShortcutPath)) {
+    return;
+  }
+
+  # Tạo một đối tượng WScript.Shell
+  $WScriptObj = New-Object -ComObject("WScript.Shell")
+
+  # Tạo shortcut với đường dẫn đã xác định
+  $shortcut = $WscriptObj.CreateShortcut($ShortcutPath)
+
+  # Thêm đường dẫn đến file abc.bat vào shortcut
+  $targetPath = "$pwd\$sourceFilePath"
+  $shortcut.TargetPath = $targetPath
+  $shortcut.WorkingDirectory = $pwd
+  $shortcut.IconLocation = "$pwd\pro.ico"
+
+  # Lưu shortcut
+  $shortcut.Save()
+  Write-Output "A shortcut has been created at the path $targetPath"
+}
+
 CheckJava
 $urlLoaderVersion = "https://github.com/uongsuadaubung/uongsuadaubung/raw/main/version.txt";
 $urlHtml = "https://portswigger.net/burp/releases/community/latest"
@@ -330,6 +359,8 @@ if (-not(Test-Path($jarProFile))) {
 if (-not(Test-Path($icon))) {
   DownloadFile -url $urlIcon -outputName $icon
 }
+
+CreateMenuShortcut -sourceFilePath $cmdFileName
 
 ReduceJarFile -propertiesName $propertiesName -jarProFile $jarProFile
 
