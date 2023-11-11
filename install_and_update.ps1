@@ -142,6 +142,56 @@ function CheckJava {
     Write-Output "Required JRE-21 is Installed"
 }
 
+function ReduceJarFile {
+    param (
+        [string]$propertiesName,
+        [string]$jarProFile
+    )
+    # Lấy thông tin về file
+    $fileInfo = Get-Item $jarProFile
+
+    # Dung lượng của file (dung lượng được tính bằng bytes)
+    $fileSizeInBytes = $fileInfo.Length
+
+    # Dung lượng trong megabytes
+    $fileSizeInMB = $fileSizeInBytes / 1MB
+
+    # Kiểm tra xem dung lượng có lớn hơn 400MB hay không
+    if ($fileSizeInMB -lt 300) {
+        Write-Output "No need to reduce jar size"
+        return
+    }
+    # Kiểm tra xem 7z.exe có tồn tại trong đường dẫn môi trường không
+    $7zPath = Get-Command 7z.exe -ErrorAction SilentlyContinue
+
+    if ($7zPath) {
+        Write-Host "7z.exe found. Proceeding with the script..."
+        
+        7z d $jarProFile chromium-linux64-*.zip chromium-macosx64-*.zip
+
+        # Giải nén file abc.txt từ test.jar
+        $unzippedContent = 7z e $jarProFile $propertiesName -so
+
+        # Chuyển đổi nội dung thành mảng dòng
+        $lines = $unzippedContent -split "`n"
+
+        # Giữ lại chỉ dòng chứa "win64"
+        $filteredLines = $lines | Where-Object { $_ -like "*win64*" }
+
+        Write-Output $filteredLines
+
+        Set-Content -Path "$propertiesName" -Value $filteredLines
+
+        7z a $jarProFile $propertiesName
+
+        Remove-Item $propertiesName
+
+    } else {
+        Write-Host "Error: 7z.exe not found. Please make sure 7-Zip is installed and added to the system PATH."
+    }
+        
+}
+
 CheckJava
 $urlLoaderVersion = "https://github.com/uongsuadaubung/uongsuadaubung/raw/main/version.txt";
 $urlHtml = "https://portswigger.net/burp/releases/community/latest"
@@ -152,7 +202,7 @@ $loaderLatestFile = "loader_latest.jar"
 $jarProFile = "burpsuite_pro.jar"
 $cmdFileName = "burpsuite_pro.cmd"
 $loaderFile = "loader.jar"
-
+$propertiesName = "chromium.properties"
 
 
 # Lấy thông tin phiên bản mới nhất trên web
@@ -246,5 +296,7 @@ if (-not(Test-Path($jarProFile))) {
     DownloadFile -url $urlBurp -outputName $jarProFile
 }
 
+
+ReduceJarFile -propertiesName $propertiesName -jarProFile $jarProFile
 
 Invoke-Item $cmdFileName
