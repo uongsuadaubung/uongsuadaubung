@@ -14,17 +14,22 @@ function ManageJarFiles {
   Rename-Item -Path $destinationJarFile -NewName $sourceJarFile
 }
 
-function CreateCmdFile {
+function CreateCmdBurpSuite {
   param (
     [string]$cmdFileName,
     [string]$jarProFile
   )
+  if (Test-Path $cmdFileName) {
+    # Đã tồn tại cmd thì bỏ qua
+    return;
+  }
 
   $cmdContent = @"
 @echo off
 set JAR_PATH=%CD%\$jarProFile
 set LOADER_PATH=%CD%\loader.jar
-start /B javaw ^
+set JAVA_PATH=%CD%\jre\bin
+start /B %JAVA_PATH%\javaw.exe ^
     --add-opens=java.desktop/javax.swing=ALL-UNNAMED ^
     --add-opens=java.base/java.lang=ALL-UNNAMED ^
     --add-opens=java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED ^
@@ -37,6 +42,23 @@ start /B javaw ^
 
   Set-Content -Path $cmdFileName -Value $cmdContent
     
+}
+
+function CreateCmdLoader {
+  $cmdFileName = "loader.bat"
+  if (Test-Path $cmdFileName) {
+    # Đã tồn tại cmd thì bỏ qua
+    return;
+  }
+  
+  $cmdContent = @"
+@echo off
+set LOADER_PATH=%CD%\loader.jar
+set JAVA_PATH=%CD%\jre\bin
+start /B %JAVA_PATH%\javaw.exe -jar %LOADER_PATH%
+"@
+
+  Set-Content -Path $cmdFileName -Value $cmdContent
 }
 
 function CreateVersionFile {
@@ -97,41 +119,6 @@ function ReadVersionFile {
   return $null
 }
 
-function CheckForUpdateBurp {
-  param (
-    [string]$Url
-  )
-
-  if (CheckProgramExists -name curl.exe) {
-    $content = curl.exe --location $Url
-  }
-  else {
-    $content = Invoke-RestMethod -Uri $Url
-  }
-    
-  $pattern = '<title>(.*?)<\/title>'
-  $match = [regex]::Match($content, $pattern);
-  # Lấy giá trị từ kết quả tìm kiếm
-  $version = $null;
-  if ($match.Success) {
-    $version = [regex]::Match($match.Value, "(\d+\.\d+(?:\.\d+)*)").Value
-  } 
-  return $version -replace '\s+', ''
-}
-
-function CheckForUpdateLoader {
-  param (
-    [string]$url
-  )
-  if (CheckProgramExists -name curl.exe) {
-    $content = curl.exe --location $Url
-  }
-  else {
-    $content = Invoke-RestMethod -Uri $Url
-  }
-    
-  return $content -replace '\s+', ''
-}
 
 function DownloadFile {
   param (
@@ -151,15 +138,6 @@ function DownloadFile {
     
 }
 
-function CheckJava {
-  $jre = Get-WmiObject -Class Win32_Product -filter "Vendor='Eclipse Adoptium'" | Where-Object Caption -clike "Eclipse Temurin JRE with Hotspot 21*"
-  if (!$jre) {
-    Write-Output "Please install jre first, run: ";
-    Write-Output "winget install EclipseAdoptium.Temurin.21.JRE";
-    # exit;
-  }
-  Write-Output "Required JRE-21 is Installed"
-}
 
 function CheckProgramExists {
   param (
@@ -170,9 +148,9 @@ function CheckProgramExists {
 
 function ReduceJarFile {
   param (
-    [string]$propertiesName,
     [string]$jarProFile
   )
+  $propertiesName = "chromium.properties"
   # Lấy thông tin về file
   $fileInfo = Get-Item $jarProFile
 
@@ -249,119 +227,228 @@ function CreateMenuShortcut {
   Write-Output "A shortcut has been created at the path $targetPath"
 }
 
-CheckJava
-$urlLoaderVersion = "https://github.com/uongsuadaubung/uongsuadaubung/raw/main/version.txt";
-$urlHtml = "https://portswigger.net/burp/releases/community/latest"
+function RunBurpSuite {
+  # Hiển thị thông điệp và yêu cầu xác nhận
+  $response = Read-Host "Do you want to run BurpSuite now? (Y/N)"
 
-$versionFile = "version.txt"
-$jarLatestFile = "jar_latest.jar"
-$loaderLatestFile = "loader_latest.jar"
-$jarProFile = "burpsuite_pro.jar"
-$cmdFileName = "burpsuite_pro.cmd"
-$loaderFile = "loader.jar"
-$propertiesName = "chromium.properties"
-$icon = "pro.ico"
-$urlIcon = "https://raw.githubusercontent.com/uongsuadaubung/uongsuadaubung/main/pro.ico"
-# Lấy thông tin phiên bản mới nhất trên web
-Write-Output "Checking for update..."
+  # Chuyển đổi đầu vào thành chữ hoa để so sánh dễ dàng
+  $response = $response.ToUpper()
 
-$loaderVerion = CheckForUpdateLoader -url $urlLoaderVersion
-$urlLoader = "https://github.com/uongsuadaubung/uongsuadaubung/raw/${loaderVerion}/loader.jar"
-
-$version = CheckForUpdateBurp -Url $urlHtml
-if ($null -eq $version) {
-  Write-Output "Something wrong, please check again."
-  exit
-}
-
-$urlBurp = "https://portswigger-cdn.net/burp/releases/download?product=pro&version=$version&type=Jar"
-
-# Kiểm tra xem file "version.txt" không tồn tại
-if (-not (Test-Path $versionFile)) {
-  #Nếu là lần đầu mới chưa có gì thì download loader và burp;
-  DownloadFile -url $urlLoader -outputName $loaderFile
-  DownloadFile -url $urlBurp -outputName $jarLatestFile
-  # Tạo file "version.txt" và ghi giá trị $version vào đó
-  CreateVersionFile -versionFilePath $versionFile -key $jarProFile -value $version
-  CreateVersionFile -versionFilePath $versionFile -key $loaderFile -value $loaderVerion
-
-  # Gọi function để quản lý tệp "burpsuite_pro.jar"
-  ManageJarFiles -sourceJarFile $jarProFile -destinationJarFile $jarLatestFile
-  Write-Output "BurpSuite Professional has been installed."
-}
-else {
-  # Đọc nội dung của file "version.txt"
-  $currentVersion = ReadVersionFile -versionFilePath $versionFile -key $jarProFile 
-  if ($null -eq $currentVersion) {
-    Write-Output "Something wrong";
-    exit;
+  # Kiểm tra xác nhận và thực hiện hành động tương ứng
+  if ($response -eq 'Y') {
+    Invoke-Item $cmdFileName
   }
-  Write-Output "Current verion: $currentVersion"
-  Write-Output "Lastest verion: $version"
-  # So sánh nội dung của file "version.txt" với $version
-  if ($currentVersion -eq $version) {
-    #Nội dung của file 'version.txt' trùng khớp với giá trị hiện tại: $version
-    Write-Output "You are using the lastest version of BurpSuite Professional."
-        
+  
+}
+
+function CheckForUpdateJava {
+  param (
+    [string]$versionFilePath
+  )
+  $Url = "https://adoptium.net/temurin/releases/"
+  if (CheckProgramExists -name curl.exe) {
+    $content = curl.exe --location $Url
   }
   else {
+    $content = Invoke-RestMethod -Uri $Url
+  }
+  $zipFilePath = "jre.zip"
+  $jrePath = "jre";
+  $pattern = '<option value="(\d+)"[^>]*>\d+ - LTS<\/option>'
+  $match = [regex]::Match($content, $pattern);
+  # Lấy giá trị từ kết quả tìm kiếm
+  $version = $null;
+  if ($match.Success) {
+    $version = [regex]::Match($match.Value, "\d+").Value
+  } 
+  
+  $ltsVersion = $version -replace '\s+', ''
+  Write-Output $ltsVersion
+  $api = "https://api.adoptium.net/v3/assets/latest/$ltsVersion/hotspot?os=windows&image_type=jre"
+  if (CheckProgramExists -name curl.exe) {
+    $content = curl.exe --location $api
+  }
+  else {
+    $content = Invoke-RestMethod -Uri $api
+  }
+  $content = $content | ConvertFrom-Json
+  $jre = $content[0]
+  $version = $jre.release_name
+  $link = $jre.binary.package.link;
+
+  $currentVersion = ReadVersionFile -key $jrePath -versionFilePath $versionFilePath
+  Write-Output "Java Current verion: $currentVersion"
+  Write-Output "Java Lastest verion: $version"
+  if (($currentVersion -ne $version) -or (-not (Test-Path -Path $jrePath -PathType Container))) {
+    
+
+    #delete old version
+    if (Test-Path -Path $jrePath -PathType Container) {
+      # Nếu tồn tại, xoá thư mục "jre"
+      Remove-Item -Path $jrePath -Recurse -Force
+    }
+    
+    # handle update
+    DownloadFile -url $link -outputName $zipFilePath
+    # Kiểm tra xem tệp ZIP có tồn tại không
+    if (Test-Path $zipFilePath -PathType Leaf) {
+      7z x $zipFilePath
+      # Xoá tệp ZIP
+      Remove-Item -Path $zipFilePath -Force
+    }
+
+    # Kiểm tra xem thư mục cần đổi tên có tồn tại không
+    if (Test-Path "${version}-${jrePath}" -PathType Container) {
+      # Đổi tên thư mục
+      Rename-Item -Path "${version}-${jrePath}" -NewName $jrePath
+    }
+    CreateVersionFile -versionFilePath $versionFilePath -key $jrePath -value $version
+    Write-Output "Java $version has been installed."
+  }
+  else {
+    Write-Output "You are using the lastest version of Java."
+  }
+}
+
+function CheckForUpdateLoader {
+  param (
+    [string]$versionFilePath
+  )
+  $loaderFile = "loader.jar"
+  $loaderLatestFile = "loader_latest.jar"
+  $urlLoaderVersion = "https://github.com/uongsuadaubung/uongsuadaubung/raw/main/version.txt";
+  if (CheckProgramExists -name curl.exe) {
+    $content = curl.exe --location $urlLoaderVersion
+  }
+  else {
+    $content = Invoke-RestMethod -Uri $urlLoaderVersion
+  }
+  $lastestVerion = $content -replace '\s+', ''
+  $urlLoader = "https://github.com/uongsuadaubung/uongsuadaubung/raw/${lastestVerion}/loader.jar"
+
+  $currentVersion = ReadVersionFile -versionFilePath $versionFile -key $loaderFile 
+  
+  Write-Output "Loader Current loader verion: $currentVersion"
+  Write-Output "Loader Lastest loader verion: $lastestVerion"
+    
+  if (($currentVersion -ne $lastestVerion) -or (-not (Test-Path -Path $loaderFile))) {
+    DownloadFile -url $urlLoader -outputName $loaderLatestFile
+        
+    ManageJarFiles -sourceJarFile $loaderFile -destinationJarFile $loaderLatestFile
+		
+    CreateVersionFile -versionFilePath $versionFile -key $loaderFile -value $lastestVerion
+    Write-Output "Loader $lastestVerion has been installed."
+    
+  }
+  else {
+    Write-Output "You are using the lastest version of Loader."
+  }
+
+}
+
+function CheckForUpdateBurpSuite {
+  param (
+    [string]$versionFilePath,
+    [string]$jarProFile
+  )
+  $urlHtml = "https://portswigger.net/burp/releases/community/latest"
+  $jarLatestFile = "jar_latest.jar"
+ 
+
+
+  if (CheckProgramExists -name curl.exe) {
+    $content = curl.exe --location $urlHtml
+  }
+  else {
+    $content = Invoke-RestMethod -Uri $urlHtml
+  }
+    
+  $pattern = '<title>(.*?)<\/title>'
+  $match = [regex]::Match($content, $pattern);
+  # Lấy giá trị từ kết quả tìm kiếm
+  $v = "";
+  if ($match.Success) {
+    $v = [regex]::Match($match.Value, "(\d+\.\d+(?:\.\d+)*)").Value
+  } 
+
+  $version = $v -replace '\s+', ''
+  
+  $urlBurp = "https://portswigger-cdn.net/burp/releases/download?product=pro&version=$version&type=Jar"
+  
+  # Đọc nội dung của file "version.txt"
+  $currentVersion = ReadVersionFile -versionFilePath $versionFile -key $jarProFile 
+  
+  Write-Output "BurpSuite Current verion: $currentVersion"
+  Write-Output "BurpSuite Lastest verion: $version"
+  # So sánh nội dung của file "version.txt" với $version
+  if (($currentVersion -ne $version) -or (-not (Test-Path -Path $jarProFile))) {
+    
     #Nội dung của file 'version.txt' không trùng khớp với giá trị hiện tại: $version
     DownloadFile -url $urlBurp -outputName $jarLatestFile
     # Gọi function để quản lý tệp "burpsuite_pro.jar"
     ManageJarFiles -sourceJarFile $jarProFile -destinationJarFile $jarLatestFile
     # Cập nhật lại phiên bản
     CreateVersionFile -versionFilePath $versionFile -key $jarProFile -value $version
-    Write-Output "BurpSuite Professional has been updated."
-		
-  }
-
-  #############################################################
-
-    
-  $currentLoaderVersion = ReadVersionFile -versionFilePath $versionFile -key $loaderFile 
-  if ($null -eq $currentLoaderVersion) {
-    Write-Output "Something wrong";
-    exit;
-  }
-  Write-Output "Current loader verion: $currentLoaderVersion"
-  Write-Output "Lastest loader verion: $loaderVerion"
-    
-  if ($currentLoaderVersion -eq $loaderVerion) {
-       
-    Write-Output "You are using the lastest version of Loader."
+    Write-Output "BurpSuite Professional $version has been installed."
         
   }
   else {
-        
-    DownloadFile -url $urlLoader -outputName $loaderLatestFile
-        
-    ManageJarFiles -sourceJarFile $loaderFile -destinationJarFile $loaderLatestFile
-		
-    CreateVersionFile -versionFilePath $versionFile -key $loaderFile -value $loaderVerion
-    Write-Output "Loader has been updated."
-		
+    #Nội dung của file 'version.txt' trùng khớp với giá trị hiện tại: $version
+    Write-Output "You are using the lastest version of BurpSuite Professional."
+    
+  }
+
+}
+
+function RequireSevenZip {
+  $7zPath = CheckProgramExists -name 7z.exe
+
+  if (!$7zPath) {
+    Write-Output "Error: 7z.exe not found. Please make sure 7-Zip is installed and added to the system PATH."
+    Write-Output "winget install 7zip.7zip or winget install M2Team.NanaZip (recommended)"
+    exit
+  }
+  
+}
+
+function DownloadIcon {
+  
+  $icon = "pro.ico"
+  $urlIcon = "https://raw.githubusercontent.com/uongsuadaubung/uongsuadaubung/main/pro.ico"
+  if (-not(Test-Path($icon))) {
+    DownloadFile -url $urlIcon -outputName $icon
   }
 }
-  
-if (-not (Test-Path $cmdFileName)) {
-  # Gọi function để tạo tệp cmd
-  CreateCmdFile -cmdFileName $cmdFileName -jarProFile $jarProFile
-}
 
-if (-not(Test-Path($loaderFile))) {
-  DownloadFile -url $urlLoader -outputName $loaderFile
-}
+#######Requirement
+#Start
+RequireSevenZip;
+############define
+$versionFile = "version.txt"
+$jarProFile = "burpsuite_pro.jar"
+$cmdFileName = "burpsuite_pro.cmd"
+Write-Output "Checking for update..."
 
-if (-not(Test-Path($jarProFile))) {
-  DownloadFile -url $urlBurp -outputName $jarProFile
-}
 
-if (-not(Test-Path($icon))) {
-  DownloadFile -url $urlIcon -outputName $icon
-}
+
+#############get resources
+DownloadIcon;
+#############check for update
+
+CheckForUpdateBurpSuite -versionFilePath $versionFile -jarProFile $jarProFile;
+
+CheckForUpdateLoader -versionFilePath $versionFile;
+
+CheckForUpdateJava -versionFilePath $versionFile;
+
+#################Cmd and Shortcut
+
+CreateCmdBurpSuite -cmdFileName $cmdFileName -jarProFile $jarProFile
+
+CreateCmdLoader
 
 CreateMenuShortcut -sourceFilePath $cmdFileName
-
-ReduceJarFile -propertiesName $propertiesName -jarProFile $jarProFile
-
-Invoke-Item $cmdFileName
+####### reduce size
+ReduceJarFile -jarProFile $jarProFile
+###last step
+RunBurpSuite
